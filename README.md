@@ -67,8 +67,5 @@ Feel free to:
 - Suggest new features
 - Submit pull requests
 
-## 📄 License
-This project is released under the MIT License.
-
 ## ⚠️ Disclaimer
 This device simulates a USB keyboard. Please be cautious when using it in security-sensitive environments.
