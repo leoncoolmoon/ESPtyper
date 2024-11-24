@@ -1,3 +1,4 @@
+#define VER 1.4
 #define BOARD_NAME "Lolin S2 Mini"
 #include <DNSServer.h>
 #include <WiFi.h>
@@ -6,6 +7,8 @@
 #include "USB.h"
 #include "USBHIDKeyboard.h"
 #include "index_html.h"
+#define TEST
+#define LED 15 // LED引脚
 
 // 配置WiFi
 const char *ssid = "ESPtyper";
@@ -27,7 +30,8 @@ class CaptiveRequestHandler : public AsyncWebHandler
     CaptiveRequestHandler() {}
     virtual ~CaptiveRequestHandler() {}
 
-    bool canHandle(AsyncWebServerRequest *request) {
+    bool canHandle(AsyncWebServerRequest *request)
+    {
       return true;
     }
 
@@ -35,99 +39,170 @@ class CaptiveRequestHandler : public AsyncWebHandler
     {
       String r_url = request->url();
       Serial.println("url requested: " + r_url);
-      Serial.print("Type");
-      if ( r_url.startsWith("/type"))
+
+      if (r_url.startsWith("/type"))
       {
         Serial.print("Text");
         if (request->hasParam("pContent"))
         {
-          Serial.print(" received");
           String content = request->getParam("pContent")->value();
           Serial.print(": " + content);
           Serial.println("---<end>---");
           Keyboard.write((const uint8_t *)content.c_str(), content.length());
-          Serial.println("Text typing complete");
           request->send(200, "text/plain", "Typed: " + content);
           return;
         }
-      } else if (r_url == "/favicon.ico") {
+        else if (request->hasParam("pKey"))
+        {
+          // 处理单个按键输入
+          String key = request->getParam("pKey")->value();
+          Serial.println("KeyCode: " + key);
+          String state = request->hasParam("pReleased") ? request->getParam("pReleased")->value() : "";
+          Serial.println("Keystate: " + state);
+          handleKeyPress(key.toInt(), state);
+          request->send(200, "text/plain", "Key sent: " + key + "\n Key state: " + state);
+        }
+        return;
+      }
+      else if (r_url == "/favicon.ico")
+      {
         request->send(404);
-        return;
-      } else if (r_url.startsWith("/wifi/") ||
-                 r_url.startsWith("/mmtls/") ||
-                 r_url.startsWith("/c/s/")) {
-        request->send(204);  // 返回无内容响应
-        return;
-      } else
+      }
+      else if (r_url.startsWith("/wifi/") || r_url.startsWith("/mmtls/") || r_url.startsWith("/c/s/"))
+      {
+        request->send(204);
+      }
+      else
       {
         request->send(200, "text/html", htmlPage);
-        return;
+      }
+    }
+    bool ctrlPressed = false;
+    bool shiftPressed = false;
+    bool altPressed = false;
+  private:
+    void handleKeyPress(const int keyCode, const String &keyState) {
+      // 处理功能键按下
+      if (keyState == "false") {
+        switch (keyCode) {
+          case 128:
+            ctrlPressed = true;
+            return;
+          case 129:
+            shiftPressed = true;
+            return;
+          case 130:
+            altPressed = true;
+            return;
+        }
+      }
+      // 处理功能键释放
+      else if (keyState == "true") {
+        switch (keyCode) {
+          case 128:
+            ctrlPressed = false;
+            return;
+          case 129:
+            shiftPressed = false;
+            return;
+          case 130:
+            altPressed = false;
+            return;
+        }
+      }
+      // 处理普通键
+      else {
+        Serial.printf("CTL %s, Shift %s, ALT %s\n",
+                      "false\0true" + 6 * ctrlPressed,
+                      "false\0true" + 6 * shiftPressed,
+                      "false\0true" + 6 * altPressed
+                     );
+        // 如果有功能键被按下，确保它们已经生效
+        if (ctrlPressed) {
+          Keyboard.press(KEY_LEFT_CTRL);
+        }
+        if (shiftPressed) {
+          Keyboard.press(KEY_LEFT_SHIFT);
+        }
+        if (altPressed) {
+          Keyboard.press(KEY_LEFT_ALT);
+        }
+
+        // 按下普通键
+        Keyboard.press(keyCode);
+        delay(100);
+
+        // 释放所有按键
+        Keyboard.releaseAll();
+
+        // 重置功能键状态
+        ctrlPressed = false;
+        shiftPressed = false;
+        altPressed = false;
+      }
+    }
+    // LED闪烁函数
+    void blinkLED()
+    {
+      for (int i = 0; i < 4; i++)
+      {
+        digitalWrite(LED, HIGH);
+        delay(200);
+        digitalWrite(LED, LOW);
+        delay(200);
       }
     }
 };
 
-// 初始化WiFi和Captive Portal
+
 void setupWiFi()
 {
-  // 生成随机密码
   password = "";
   for (int i = 0; i < 8; i++)
   {
-    char randomChar = 'A' + rand() % 26;
-    password += randomChar;
+    password += (char)('A' + random(26));
   }
-
-  // 配置AP模式
+#ifdef TEST
+  password = "ABCDEFGH";
+#endif
   WiFi.mode(WIFI_AP);
   WiFi.softAP(ssid, password.c_str());
-
-  // 配置AP的IP地址
-  IPAddress IP = IPAddress(172, 217, 28, 1);
-  IPAddress subnet = IPAddress(255, 255, 255, 0);
+  IPAddress IP(172, 217, 28, 1);
+  IPAddress subnet(255, 255, 255, 0);
   WiFi.softAPConfig(IP, IP, subnet);
-
-  // 启动DNS服务器
   dnsServer.start(53, "*", IP);
-
   Serial.println("WiFi AP setup complete.");
   Serial.println("SSID: " + String(ssid));
   Serial.println("Password: " + password);
   Serial.println("AP IP address: " + IP.toString());
 }
 
-// 初始化HID
-void setupHID()
-{
-  pinMode(0, INPUT_PULLUP);
-  USB.begin();
-  Keyboard.begin();
-}
-
 void setup()
 {
   Serial.begin(115200);
-
-  // 初始化WiFi和USB HID
+  pinMode(0, INPUT_PULLUP);
+  pinMode(LED, OUTPUT);
+  digitalWrite(LED, LOW);
   setupWiFi();
-  setupHID();
-  // 添加Captive Portal处理程序
+  Serial.println("USB enabled");
+  Keyboard.begin();
+  USB.begin();
   server.addHandler(new CaptiveRequestHandler()).setFilter(ON_AP_FILTER);
-
-  // 启动服务器
   server.begin();
 }
+
 void loop()
 {
   dnsServer.processNextRequest();
 
-  // 检测按钮状态
-  if (digitalRead(0) == LOW && !keyDown) {
+  if (digitalRead(0) == LOW && !keyDown)
+  {
     keyDown = true;
     delay(50);
-    //    hidPrint(password);
-    Keyboard.write((const uint8_t*)password.c_str(), password.length());
+      Keyboard.write((const uint8_t *)password.c_str(), password.length());
   }
-  else if (digitalRead(0) == HIGH && keyDown) {
+  else if (digitalRead(0) == HIGH && keyDown)
+  {
     keyDown = false;
     delay(50);
   }
