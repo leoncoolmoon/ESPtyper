@@ -699,8 +699,11 @@ const char *htmlPage = R"rawliteral(
             event.stopPropagation();
             event.preventDefault();
             if (touchStart) {
-                sendMouse('Touch', { x: Math.abs(touchX - event.clientX) > threashold ? touchX - event.clientX : 0, y: Math.abs(touchY - event.clientY) > threashold ? touchY - event.clientY : 0 });
+                sendMouse('Touch', { x: touchX !== event.clientX ? touchX - event.clientX : 0, y: touchY !== event.clientY ? touchY - event.clientY : 0 });
+                touchX = event.clientX;
+                touchY = event.clientY;
             }
+
         }, { passive: false });
         mTp.addEventListener('touchstart', (event) => {
             event.stopPropagation();
@@ -727,7 +730,9 @@ const char *htmlPage = R"rawliteral(
             if (touchStart) {
                 var cx = event.touches.length > 0 ? event.touches[0].clientX : event.changedTouches[0].clientX;
                 var cy = event.touches.length > 0 ? event.touches[0].clientY : event.changedTouches[0].clientY;
-                sendMouse('Touch',{x:Math.abs(touchX - cx)>threashold?touchX-cx:0,y:Math.abs(touchY - cy)>threashold?touchY-cy:0});
+                sendMouse('Touch',{x:touchX !== cx?touchX-cx:0,y:touchY !== cy?touchY-cy:0});
+                touchX = cx;
+                touchY = cy;
             }
         }, { passive: false });
         mTp.addEventListener('touchcancel', (event) => {
