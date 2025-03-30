@@ -7,6 +7,9 @@ const char *htmlPage = R"rawliteral(
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta charset="UTF-8">
     <style>
+        html, body {
+            overscroll-behavior: contain;
+        }
         body {
             /* font-family: Arial, sans-serif; */
             /*margin: 20px;*/
