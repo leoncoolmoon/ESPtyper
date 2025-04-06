@@ -8,6 +8,7 @@
 #include "USBHIDKeyboard.h"
 #include "USBHIDMouse.h"
 #include "index_html.h"
+#include "OTA.h"
 #define TEST
 #define LED 15 // LED引脚
 
@@ -107,8 +108,8 @@ class CaptiveRequestHandler : public AsyncWebHandler
           } else if (request->hasParam("pX") && request->hasParam("pY")) {
             int parameterX = (request->getParam("pX")->value()).toInt();
             int parameterY = (request->getParam("pY")->value()).toInt();
-            Serial.println("pX: " + String(parameterX));
-            Serial.println("pY: " + String(parameterY));
+            //Serial.println("pX: " + String(parameterX));
+            //Serial.println("pY: " + String(parameterY));
             if (action == 27) { //move mouse
               Mouse.move(parameterX, parameterY, 0, 0);
             } else if (action == 26) { //scroll page
@@ -261,12 +262,13 @@ void setup()
   USB.begin();
   server.addHandler(new CaptiveRequestHandler()).setFilter(ON_AP_FILTER);
   server.begin();
+  setupOTA();
 }
 
 void loop()
 {
   dnsServer.processNextRequest();
-
+  loopOTA();
   if (digitalRead(0) == LOW && !keyDown)
   {
     keyDown = true;

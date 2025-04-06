@@ -3,20 +3,29 @@ const char *htmlPage = R"rawliteral(
 <html>
 
 <head>
-    <title>ESP Typer 1.5</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ESP Typer 1.6</title>
+    <meta name="viewport" content="user-scalable=no,width=device-width, initial-scale=1">
     <meta charset="UTF-8">
     <style>
         html, body {
-            overscroll-behavior: contain;
+             height: 100%;
+             overflow: hidden;
+             overscroll-behavior: none;
+             position: fixed;
+             overflow-y: auto;
         }
+        
         body {
             /* font-family: Arial, sans-serif; */
             /*margin: 20px;*/
             background: #f0f0f0;
             min-width: 360px;
         }
-
+        body::after {
+          content: '';
+          display: block;
+          height: 100px; /* 添加一个假内容撑开页面 */
+        }
         .container {
             max-width: 800px;
             margin: 0 auto;
@@ -175,6 +184,9 @@ const char *htmlPage = R"rawliteral(
         .space-key {
             min-width: 12vw;
         }
+          canvas {
+            touch-action: none;  
+          }
 
         @media (max-width: 600px) {
             .container {
@@ -197,6 +209,7 @@ const char *htmlPage = R"rawliteral(
                 font-size: 12px;
             }
         }
+        
     </style>
 </head>
 
@@ -225,6 +238,11 @@ const char *htmlPage = R"rawliteral(
 
     </div>
     <script>
+
+if (window.top !== window.self) {
+  showStatus("当前页面在 iframe 中", true)();
+} 
+    
         const keyboardLayout = [
             [
                 { main: '`', sub: '~', type: 0 },
@@ -664,7 +682,7 @@ const char *htmlPage = R"rawliteral(
                 var cy = event.touches.length > 0 ? event.touches[0].clientY : event.changedTouches[0].clientY;
                 sendMouse('Scroll', { x: Math.abs(scrollX - cx) > threashold ? cx - scrollX : 0, y: Math.abs(scrollY - cy) > threashold ? cy - scrollY : 0 });
             }
-        })
+        }, { passive: false });
         let touchStart = false;
         let touchX = 0;
         let touchY = 0;
@@ -793,6 +811,18 @@ const char *htmlPage = R"rawliteral(
                 showStatus('Error: ' + error.message + '\n Failed to send mouse', true);
             }
         }
+        document.addEventListener('touchmove', function(e) {
+             e.preventDefault();          
+        }, { passive: false });
+        document.body.addEventListener('touchmove', function (e) {
+            e.preventDefault();
+        }, { passive: false });
+        window.addEventListener('touchmove', function (e) {
+            if (window.scrollY === 0) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+
     </script>
 </body>
 </html>
