@@ -1,4 +1,4 @@
-#define VER 1.5
+#define VER 1.6
 #define BOARD_NAME "Lolin S2 Mini"
 #include <DNSServer.h>
 #include <WiFi.h>
@@ -8,10 +8,15 @@
 #include "USBHIDKeyboard.h"
 #include "USBHIDMouse.h"
 #include "index_html.h"
+#include "ocrad_js.h"
 #include "OTA.h"
 #define TEST
 #define LED 15 // LED引脚
+/* WARNING!
+   this is a big program,
+   need 1.4M space for both program and OTA
 
+*/
 // 配置WiFi
 const char *ssid = "ESPtyper";
 String password;
@@ -131,6 +136,27 @@ class CaptiveRequestHandler : public AsyncWebHandler
       else if (r_url == "/favicon.ico")
       {
         request->send(404);
+      }
+      else if (r_url == "/ocrad.js")
+      {
+//        AsyncWebServerResponse *response = request->beginResponse_P(
+//                                             200,
+//                                             "application/javascript",     // MIME 类型
+//                                             OCRAD_JS_GZ,                   // 数据指针
+//                                             sizeof(OCRAD_JS_GZ)              // 长度
+//                                           );
+
+AsyncWebServerResponse *response = request->beginChunkedResponse(
+    "application/javascript",
+    [](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
+        // 分块读取 OCRAD_JS_GZ 数据
+        size_t len = min(maxLen, sizeof(OCRAD_JS_GZ) - index);
+        memcpy(buffer, OCRAD_JS_GZ + index, len);
+        return len;
+    });
+    
+        response->addHeader("Content-Encoding", "gzip"); // 让浏览器知道这是压缩内容
+        request->send(response);
       }
       else if (r_url.startsWith("/wifi/") || r_url.startsWith("/mmtls/") || r_url.startsWith("/c/s/"))
       {

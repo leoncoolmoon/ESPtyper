@@ -6,18 +6,21 @@ const char *htmlPage = R"rawliteral(
     <title>ESP Typer 1.6</title>
     <meta name="viewport" content="user-scalable=no,width=device-width, initial-scale=1">
     <meta charset="UTF-8">
+    <!-- <script src="ocrad.js"></script> -->
     <style>
+
         html, body {
              height: 100%;
              overflow: hidden;
              overscroll-behavior: none;
-             position: fixed;
+             /*position: fixed;*/
              overflow-y: auto;
+        justify-content: center;
         }
         
         body {
             /* font-family: Arial, sans-serif; */
-            /*margin: 20px;*/
+            margin: 5vw;
             background: #f0f0f0;
             min-width: 360px;
         }
@@ -188,6 +191,25 @@ const char *htmlPage = R"rawliteral(
             touch-action: none;  
           }
 
+        /* OCR related styles */
+        .file-input {
+            display: none;
+        }
+        
+        .ocr-preview {
+            max-width: 100%;
+            max-height: 200px;
+            display: none;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        
+        .ocr-progress {
+            display: none;
+            margin: 10px 0;
+            color: #666;
+        }
+
         @media (max-width: 600px) {
             .container {
                 margin: 10px;
@@ -195,7 +217,6 @@ const char *htmlPage = R"rawliteral(
             }
 
             .key {
-
                 height: 40px;
                 margin: 1px;
                 padding: 3px;
@@ -209,7 +230,26 @@ const char *htmlPage = R"rawliteral(
                 font-size: 12px;
             }
         }
-        
+        .previewDIV {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      overflow: hidden;
+      touch-action: none;
+    }
+    .previewImg{
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      transform-origin: 0 0;
+    }
     </style>
 </head>
 
@@ -222,7 +262,14 @@ const char *htmlPage = R"rawliteral(
         <button onclick="toggleView(2)">Mouse</button>
         <div id="typer">
             <textarea id="textInput" placeholder="Enter text here..."></textarea><br>
+            <input type="file" id="fileInput" class="file-input" accept="image/*,text/*">
+            <button onclick="document.getElementById('fileInput').click()">Open File (OCR)</button>
             <button onclick="sendText()">Type Text</button>
+            <img id="ocrPreview" class="ocr-preview" alt="Preview">
+            <div id="ocrProgress" class="ocr-progress">Processing...</div>
+      <div id="fullscreen-preview" class="previewDIV">
+        <img id="preview-image" class="previewImg">
+      </div>
         </div>
         <div id="mouse">
             <div id="mouseButtonContainer" class="mouse-button-container">
@@ -238,6 +285,138 @@ const char *htmlPage = R"rawliteral(
 
     </div>
     <script>
+// 全局变量记录拖动和缩放状态
+let isDragging = false;
+let isScaling = false;
+let startX = 0, startY = 0;
+let offsetX = 0, offsetY = 0;
+let scale = 1;
+let initialDistance = 0;
+let currentImage = null;
+
+// 点击 OCR 预览 Canvas 时触发全屏预览
+document.getElementById('ocrPreview').addEventListener('click', function(e) {
+   
+    const previewDiv = document.getElementById('fullscreen-preview');
+    const previewImg = document.getElementById('preview-image');
+    
+    previewDiv.style.display = 'flex';
+    currentImage = previewImg;
+    
+    // 重置缩放和位置
+    scale = 1;
+    offsetX = 0;
+    offsetY = 0;
+    updateImageTransform();
+});
+
+// 关闭全屏预览的函数
+function closePreview() {
+    document.getElementById('fullscreen-preview').style.display = 'none';
+}
+
+// 更新图片的缩放和位移
+function updateImageTransform() {
+    if (currentImage) {
+        currentImage.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+    }
+}
+
+// 单击关闭（判断是否移动）
+document.getElementById('fullscreen-preview').addEventListener('mousedown', function(e) {
+    if (e.button !== 0) return; // 仅左键
+    startX = e.clientX;
+    startY = e.clientY;
+    isDragging = false;
+});
+
+document.getElementById('fullscreen-preview').addEventListener('mousemove', function(e) {
+    if (startX !== 0 && startY !== 0) {
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+            isDragging = true;
+            offsetX += dx;
+            offsetY += dy;
+            startX = e.clientX;
+            startY = e.clientY;
+            updateImageTransform();
+        }
+    }
+});
+
+document.getElementById('fullscreen-preview').addEventListener('mouseup', function(e) {
+    if (!isDragging && e.button === 0) {
+        closePreview();
+    }
+    startX = 0;
+    startY = 0;
+});
+
+// 触摸事件支持（移动端）
+document.getElementById('fullscreen-preview').addEventListener('touchstart', function(e) {
+    if (e.touches.length === 1) {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        isDragging = false;
+    isScaling = false;
+    } else if (e.touches.length === 2) {
+        // 双指缩放
+        initialDistance = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+        );
+      isScaling = true;
+      isDragging = false;
+    }
+});
+
+document.getElementById('fullscreen-preview').addEventListener('touchmove', function(e) {
+    if (e.touches.length === 1 && startX !== 0 && startY !== 0) {
+        const dx = e.touches[0].clientX - startX;
+        const dy = e.touches[0].clientY - startY;
+        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+            isDragging = true;
+      isScaling = false;
+            offsetX += dx;
+            offsetY += dy;
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+            updateImageTransform();
+        }
+    } else if (e.touches.length === 2 && initialDistance > 0) {
+        // 双指缩放
+        const currentDistance = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+        );
+    isScaling = true;
+    isDragging = false;
+        scale = Math.max(0.5, Math.min(3, scale * (currentDistance / initialDistance)));
+        initialDistance = currentDistance;
+        updateImageTransform();
+    }
+});
+
+document.getElementById('fullscreen-preview').addEventListener('touchend', function(e) {
+    if (e.touches.length === 0 && !isDragging && !isScaling) {
+        closePreview();
+    isDragging = false;
+    isScaling = false;
+    }
+    startX = 0;
+    startY = 0;
+    initialDistance = 0;
+});
+
+// 滚轮缩放
+document.getElementById('fullscreen-preview').addEventListener('wheel', function(e) {
+    e.preventDefault();
+    const delta = -e.deltaY / 100; // 缩放灵敏度
+    scale = Math.max(0.5, Math.min(3, scale + delta));
+    updateImageTransform();
+});
+
 
 if (window.top !== window.self) {
   showStatus("当前页面在 iframe 中", true)();
@@ -326,8 +505,362 @@ if (window.top !== window.self) {
                 status.style.display = 'none';
             }, 3000);
         }
+    // 添加内存监控函数（可选）
+function checkMemoryUsage() {
+    if (performance.memory) {
+        const memory = performance.memory;
+        const usedMB = Math.round(memory.usedJSHeapSize / 1024 / 1024);
+        const limitMB = Math.round(memory.jsHeapSizeLimit / 1024 / 1024);
+        const usagePercent = (memory.usedJSHeapSize / memory.jsHeapSizeLimit * 100).toFixed(1);
+        
+        console.log(`内存使用: ${usedMB}MB / ${limitMB}MB (${usagePercent}%)`);
+        
+        // 如果内存使用超过80%就警告
+        if (memory.usedJSHeapSize / memory.jsHeapSizeLimit > 0.8) {
+            console.warn('To much mem used, need reflesh the page manually');
+            return true;
+        }
+    }
+    return false;
+}
+function cleanupOCR() {
+    // 清理所有临时Canvas
+    const tempCanvases = document.querySelectorAll('canvas.temp-ocr');
+    tempCanvases.forEach(canvas => canvas.remove());
+    
+    // 清理可能存在的全局变量
+    if (typeof lastImageData !== 'undefined') {
+        lastImageData = null;
+    }
+    
+    // 强制垃圾回收
+    if (window.gc) {
+        window.gc();
+    }
+    
+    // 记录内存使用情况（开发时有用）
+    if (performance.memory && console.log) {
+        const memoryMB = Math.round(performance.memory.usedJSHeapSize / 1024 / 1024);
+        console.log(`清理后内存使用: ${memoryMB}MB`);
+    }
+}
+        
+// 缓存频繁访问的DOM元素
+const ocrElements = {
+    fileInput: document.getElementById('fileInput'),
+    preview: document.getElementById('ocrPreview'),
+  preview2: document.getElementById('preview-image'),
+    progress: document.getElementById('ocrProgress'),
+    textInput: document.getElementById('textInput'),
+    status: document.getElementById('status') || createStatusElement()
+};
+
+// 常量定义
+const MAX_FILE_SIZE = 1 * 1024 * 1024; // 1MB
+const MAX_IMAGE_DIMENSION = 1024;
+const MAX_COMPRESSION_ATTEMPTS = 8;
+const IMAGE_LOAD_TIMEOUT = 10000;
+isOCRLoading = false; 
+
+ocrElements.fileInput.addEventListener('change', async function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    // 提前验证文件类型
+    if (!file.type.startsWith('image/') && !file.type.startsWith('text/') && !file.name.endsWith('.txt')) {
+        showStatus('Not supported file type, only text or image supported', true);
+        return;
+    }
+  
+  if (!file.type.startsWith('image/')) {
+            // 处理文本文件
+      try{
+        const text = await readTextFile(file);
+        ocrElements.textInput.value = filterHighASCII(text);
+        showStatus('Text loaded', false);
+      }catch(error){
+        showStatus('Fail to handle the Text content:'+ error.message, true);
+      }
+      return;
+        }
+  // 动态加载 ocrad.js
+    if (typeof OCRAD === 'undefined'&& !isOCRLoading) {
+    isOCRLoading = true; 
+        ocrElements.progress.style.display = 'block';
+        ocrElements.progress.textContent = 'Loading OCR engine...';      
+        try {
+            await loadScript('ocrad.js');     
+            showStatus('OCR engine loaded', false);
+      isOCRLoading = false;
+        } catch (error) {
+            showStatus('Failed to load OCR engine: ' + error.message, true);
+            ocrElements.progress.style.display = 'none';
+      isOCRLoading = false;
+      return;
+        }
+    }
+        processImageFile(file); // 如果已加载则直接处理
+});
+// 动态加载JS文件的函数
+function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.onload = resolve;
+        script.onerror = () => reject(new Error(`Script load error for ${src}`));
+        document.head.appendChild(script);
+    });
+}
+
+// 提取出来的图片处理逻辑
+async function processImageFile(file){
+    // 清理资源
+    cleanupOCR();
+   
+    // 准备UI状态
+    ocrElements.preview.style.display = 'none';
+    ocrElements.progress.style.display = 'block';
+    
+    let resources = {
+        imageUrl: null,
+        canvas: null,
+        img: null
+    };
+    
+    try {      
+            // 处理图片文件
+            const processedFile = file.size > MAX_FILE_SIZE 
+                ? await compressImageFile(file, MAX_FILE_SIZE) 
+                : file;
+            
+            resources.imageUrl = URL.createObjectURL(processedFile);
+            
+            // 显示预览
+            ocrElements.preview.style.display = 'block';
+            ocrElements.preview.src = resources.imageUrl;
+      ocrElements.preview2.src = resources.imageUrl;
+            
+            // 加载图片
+            resources.img = await loadImage(resources.imageUrl);
+            
+            // 调整尺寸
+            const { width, height } = calculateDimensions(resources.img);
+            
+            // 创建Canvas并绘制
+            resources.canvas = createCanvas(width, height);
+            const ctx = resources.canvas.getContext('2d');
+            ctx.drawImage(resources.img, 0, 0, width, height);
+            
+            // 执行OCR识别
+            const text = OCRAD(resources.canvas);
+            ocrElements.textInput.value = filterHighASCII(text);
+            showStatus('OCR done', false);      
+    } catch (error) {
+        handleFileError(error);
+    } finally {
+        cleanupResources(resources);
+    }
+}
+        // Filter ASCII > 127 characters
+        function filterHighASCII(text) {
+            return text.replace(/[^\x00-\x7F]/g, '');
+        }
+// 辅助函数
+async function loadImage(url) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.src = url;
+        
+        const timer = setTimeout(() => {
+            reject(new Error('Image loading overtime'));
+        }, IMAGE_LOAD_TIMEOUT);
+        
+        img.onload = () => {
+            clearTimeout(timer);
+            resolve(img);
+        };
+        img.onerror = () => {
+            clearTimeout(timer);
+            reject(new Error('Image loading failed'));
+        };
+    });
+}
+
+function calculateDimensions(img) {
+    let width = img.width;
+    let height = img.height;
+    
+    if (width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION) {
+        const ratio = Math.min(MAX_IMAGE_DIMENSION / width, MAX_IMAGE_DIMENSION / height);
+        width = Math.floor(width * ratio);
+        height = Math.floor(height * ratio);
+    }
+    
+    return { width, height };
+}
+
+function createCanvas(width, height) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    canvas.className = 'temp-ocr';
+    return canvas;
+}
+
+async function readTextFile(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = () => reject(new Error('Fail to read'));
+        reader.readAsText(file);
+    });
+}
+
+function handleFileError(error) {
+    console.error('File handling error:', error);
+    
+    let message = 'File handling error: ' + error.message;
+    
+    if (error.message.includes('Cannot enlarge memory')) {
+        message = 'Image too big(>1MB)';
+    } else if (error.message.includes('Image loading')) {
+        message = 'Damaged image';
+    }
+    
+    showStatus(message, true);
+}
+
+function cleanupResources(resources) {
+    ocrElements.progress.style.display = 'none';
+    
+    if (resources.imageUrl) {
+        URL.revokeObjectURL(resources.imageUrl);
+    }
+    
+    if (resources.canvas) {
+        resources.canvas.remove();
+    }
+    
+    if (resources.img) {
+        resources.img.src = '';
+    }
+    
+    // 延迟垃圾回收
+    if (window.gc) {
+        setTimeout(window.gc, 100);
+    }
+}
+
+// 文件压缩函数优化
+async function compressImageFile(file, maxSize) {
+    return new Promise((resolve) => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        
+        img.onload = function() {
+            const { width, height, quality } = calculateCompressionParams(img, file.size, maxSize);
+            
+            canvas.width = width;
+            canvas.height = height;
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            compressWithQuality(canvas, quality, maxSize, resolve);
+        };
+        
+        img.src = URL.createObjectURL(file);
+    });
+}
+
+function calculateCompressionParams(img, fileSize, maxSize) {
+    const oversizeRatio = fileSize / maxSize;
+    let quality = 0.8;
+    let width = img.width;
+    let height = img.height;
+    
+    // 根据超限比例调整质量和尺寸
+    if (oversizeRatio > 4) {
+        quality = 0.4;
+        const scale = 0.6;
+        width *= scale;
+        height *= scale;
+    } else if (oversizeRatio > 2) {
+        quality = 0.6;
+        const scale = 0.8;
+        width *= scale;
+        height *= scale;
+    } else {
+        quality = 0.7;
+    }
+    
+    // 确保不超过最大尺寸
+    if (width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION) {
+        const ratio = Math.min(MAX_IMAGE_DIMENSION / width, MAX_IMAGE_DIMENSION / height);
+        width *= ratio;
+        height *= ratio;
+    }
+    
+    return {
+        width: Math.floor(width),
+        height: Math.floor(height),
+        quality
+    };
+}
+
+function compressWithQuality(canvas, initialQuality, maxSize, resolve) {
+    let quality = initialQuality;
+    let attempts = 0;
+    
+    function tryCompress() {
+        canvas.toBlob((blob) => {
+            if (blob.size <= maxSize || quality <= 0.1 || attempts >= MAX_COMPRESSION_ATTEMPTS) {
+                const finalFile = new File([blob], 'compressed.jpg', { type: 'image/jpeg' });
+                canvas.remove();
+                resolve(finalFile);
+            } else {
+                quality *= 0.8;
+                attempts++;
+                setTimeout(tryCompress, 0); // 给浏览器喘息时间
+            }
+        }, 'image/jpeg', quality);
+    }
+    
+    tryCompress();
+}
+
+function createStatusElement() {
+    const status = document.createElement('div');
+    status.id = 'status';
+    status.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 10px 20px;
+        border-radius: 4px;
+        color: white;
+        font-weight: bold;
+        z-index: 1000;
+        display: none;
+    `;
+    document.body.appendChild(status);
+    
+    // 添加样式
+    const style = document.createElement('style');
+    style.textContent = `
+        .status.success { background-color: #4CAF50; }
+        .status.error { background-color: #f44336; }
+    `;
+    document.head.appendChild(style);
+    
+    return status;
+}
+
+
+
+
+
         async function sendText() {
-            const mText = document.getElementById('textInput').value;
+            const mText = filterHighASCII(document.getElementById('textInput').value);
             if (!mText.trim()) {
                 showStatus('Please enter some text', true);
                 return;
@@ -587,6 +1120,9 @@ if (window.top !== window.self) {
             }
         }
         var actionLock = false;
+    let lastSendTime = 0;
+    const MOUSE_UPDATE_INTERVAL = 20; // 50fps (1000/50=20ms)
+    let lastPendingMove = null;
         document.getElementById('mouseLeftButton').addEventListener('mousedown', (event) => {
             event.stopPropagation();
             event.preventDefault();
@@ -618,7 +1154,7 @@ if (window.top !== window.self) {
         let middleClick = false;
         let startTime = 0;
         let threashold = 10;
-        let threasholdTime = 250;
+        let threasholdTime = 30;
         var mBt = document.getElementById('mouseMiddleButton');
         mBt.addEventListener('mousedown', (event) => {
             event.stopPropagation();
@@ -649,7 +1185,7 @@ if (window.top !== window.self) {
             event.stopPropagation();
             event.preventDefault();
             middleClick = true;
-            scrollY = event.Touches.length > 0 ? event.touches[0].clientY : event.changedTouches[0].clientY;
+            scrollY = event.touches.length > 0 ? event.touches[0].clientY : event.changedTouches[0].clientY;
             scrollX = event.touches.length > 0 ? event.touches[0].clientX : event.changedTouches[0].clientX;
             startTime = Date.now();
         }, { passive: false });
@@ -658,7 +1194,7 @@ if (window.top !== window.self) {
             event.preventDefault();
             if (middleClick) {
                 //if{0,0} -> click
-                var cx = event.Touches.length > 0 ? event.touches[0].clientX : event.changedTouches[0].clientX;
+                var cx = event.touches.length > 0 ? event.touches[0].clientX : event.changedTouches[0].clientX;
                 var cy = event.touches.length > 0 ? event.touches[0].clientY : event.changedTouches[0].clientY;
                 sendMouse('Scroll',{x:Math.abs(scrollX - cx)>threashold?cx-scrollX:0,y:Math.abs(scrollY - cy)>threashold?cy-scrollY:0});
             }
@@ -668,7 +1204,7 @@ if (window.top !== window.self) {
             event.stopPropagation();
             event.preventDefault();
             if (middleClick) {
-                var cx = event.Touches.length > 0 ? event.touches[0].clientX : event.changedTouches[0].clientX;
+                var cx = event.touches.length > 0 ? event.touches[0].clientX : event.changedTouches[0].clientX;
                 var cy = event.touches.length > 0 ? event.touches[0].clientY : event.changedTouches[0].clientY;
                 sendMouse('Scroll',{x:Math.abs(scrollX - cx)>threashold?20 * (scrollX > cx ? -1 : 1):0,y:Math.abs(scrollY - cy)>threashold?20 * (scrollY > cy ? -1 : 1) :0});
                 middleClick = false;
@@ -764,9 +1300,9 @@ if (window.top !== window.self) {
             }
         }, { passive: false });
         async function sendMouse(mouseAction, data) {
-            try {
+          try {
                 let response = null;
-                console.log("action= " + mouseAction);
+                //console.log("action= " + mouseAction);
                 if (mouseAction === 'Scroll') {
                     if (data.x === 0 && data.y === 0) {
                         // if (Date.now() - startTime < threasholdTime) {
@@ -779,8 +1315,12 @@ if (window.top !== window.self) {
                         return;
                     }
 
-                    console.log("pX= " + data.x);
-                    console.log("pY= " + data.y);
+                    //console.log("pX= " + data.x);
+                    //console.log("pY= " + data.y);
+               if (Date.now() - startTime < threasholdTime) {
+                             return;
+                         }
+             startTime = Date.now();
                     response = await fetch(`/type?pAction=${mouseActionToKeyCode('Scroll')}&pX=${encodeURIComponent(data.x)}&pY=${encodeURIComponent(data.y)}`, { method: 'GET' });
 
                 } else if (mouseAction === 'Touch') {
@@ -794,14 +1334,17 @@ if (window.top !== window.self) {
                         // }
                         return;
                     }
-
-                    console.log("pX= " + data.x);
-                    console.log("pY= " + data.y);
+               if (Date.now() - startTime < threasholdTime) {
+                             return;
+                         }
+             startTime = Date.now();
+                    //console.log("pX= " + data.x);
+                    //console.log("pY= " + data.y);
                     data.x = mTpw - data.x;
                     data.y = mTph - data.y;
                     response = await fetch(`/type?pAction=${mouseActionToKeyCode('Touch')}&pX=${encodeURIComponent(data.x)}&pY=${encodeURIComponent(data.y)}`, { method: 'GET' });
                 } else {
-                    console.log("pA= " + data.press);
+                    //console.log("pA= " + data.press);
                     response = await fetch(`/type?pAction=${mouseActionToKeyCode(mouseAction)}&pA=${data.press}`, { method: 'GET' });
                 }
                 if (!response.ok) {
@@ -812,15 +1355,21 @@ if (window.top !== window.self) {
             }
         }
         document.addEventListener('touchmove', function(e) {
-             e.preventDefault();          
+            if (e.target.tagName == 'CANVAS') {
+        e.preventDefault();
+      }          
         }, { passive: false });
         document.body.addEventListener('touchmove', function (e) {
-            e.preventDefault();
+      if (e.target.tagName == 'CANVAS') {
+        e.preventDefault();
+      }     
         }, { passive: false });
         window.addEventListener('touchmove', function (e) {
             if (window.scrollY === 0) {
-                e.preventDefault();
-            }
+        if (e.target.tagName == 'CANVAS') {
+          e.preventDefault();
+        }
+      }
         }, { passive: false });
 
     </script>
