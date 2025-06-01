@@ -3,14 +3,18 @@ A gadget for copy text from mobile to pc using HID protocol
 
 ## 📝 Description
 ESPtyper is a versatile tool that allows you to easily transfer text from your mobile device to a computer using USB HID keyboard simulation. It creates a WiFi access point that you can connect to from your mobile device, and then sends the text as keyboard inputs to the connected computer.
+The version 1.6 add ocr function (works when not in captive portal version) 
+(you need to modify the borad.txt and add bigOTA.csv at\partitions to make both OTA and ocr working)
 
 ## ✨ Features
-- 🔒 Secure WiFi access point with random password
+- 🔒 Secure WiFi access point with random password(optional)
 - 📱 Mobile-friendly web interface
-- ⌨️ USB HID keyboard emulation
+- ⌨️ USB HID keyboard and mouse emulation
 - 🔌 Plug-and-play functionality
 - 🔄 Real-time text transmission
 - 🔐 Built-in password display button
+- build-in OCR function
+- build-in OTA function
 
 ## 🛠 Hardware Requirements
 - ESP32-S2 or ESP32-S3 board (Recommended: Lolin S2 Mini)
