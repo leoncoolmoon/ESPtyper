@@ -4,7 +4,16 @@ A gadget for copy text from mobile to pc using HID protocol
 ## 📝 Description
 ESPtyper is a versatile tool that allows you to easily transfer text from your mobile device to a computer using USB HID keyboard simulation. It creates a WiFi access point that you can connect to from your mobile device, and then sends the text as keyboard inputs to the connected computer.
 The version 1.6 add ocr function (works when not in captive portal version) 
-(you need to modify the borad.txt and add bigOTA.csv at\partitions to make both OTA and ocr working)
+(You need to modify the borad.txt and add bigOTA.csv at\partitions to make both OTA and ocr working,otherwise if you don't need OTA, you can just choose a big program to make it work, or modify the code and take the ocrad.js into spiffs or fatfs and rewrite a bit code)
+
+### Add big program and bigOTA
+You need to add bigOTA.csv to your  "C:\Users\$username\AppData\Local\Arduino15\packages\esp32\hardware\esp32\$version\tools\partitions\"
+add following into your broad.txt at "C:\Users\$username\AppData\Local\Arduino15\packages\esp32\hardware\esp32\$version" to make it work.
+'''
+lolin_s2_mini.menu.PartitionScheme.LargeApp=Default 4MB with OTA(1.9MB APP/1.9MB OTA)
+lolin_s2_mini.menu.PartitionScheme.LargeApp.build.partitions=bigOTA
+lolin_s2_mini.menu.PartitionScheme.LargeApp.upload.maximum_size=2031616
+'''
 
 ## ✨ Features
 - 🔒 Secure WiFi access point with random password(optional)
